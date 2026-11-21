@@ -1,0 +1,1283 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>통통 골인</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap">
+<style>
+[hidden] { display: none !important; }
+/* 레이아웃: 가운데 게임 화면 하나. 위에 스테이지·실패·시간, 아래에 힌트, 블록 설명, 조작 버튼 */
+:root {
+  --ink: #172026;      /* 바깥 배경 */
+  --screen: #22323b;   /* 게임 화면 */
+  --block: #6e8b74;    /* 땅 블록 */
+  --block-hi: #a7c4a0; /* 블록 윗면 풀 */
+  --block-lo: #3e5547; /* 블록 그늘 */
+  --ball: #ff8a4c;     /* 공 */
+  --flag: #ffd35c;     /* 출구 화살표, 점프 벽돌 */
+  --crack: #b9925e;    /* 깨지는 벽돌 */
+  --bomb: #0d1115;     /* 폭탄 */
+  --spark: #ff4f3f;    /* 폭탄 불꽃 */
+  --cream: #f3ead8;    /* 글자, 하이라이트 */
+  --muted: #7f97a3;    /* 보조 글자, 별 */
+  --pixel: "DotGothic16", "Courier New", monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-block: 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--ink);
+  color: var(--cream);
+  font-family: var(--pixel);
+}
+.console { width: min(100%, 480px); display: flex; flex-direction: column; gap: 12px; }
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.top h1 { margin: 0; font-size: 24px; font-weight: 400; letter-spacing: 0.04em; }
+.stats { display: flex; gap: 14px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.stats span { color: var(--muted); }
+.stats b { font-weight: 400; }
+.screen { position: relative; }
+canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+#game {
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 160 / 144;
+  border: 4px solid var(--block-lo);
+  box-sizing: border-box;
+}
+.overlay {
+  position: absolute; inset: 4px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  gap: 12px; text-align: center; padding: 16px;
+  background: color-mix(in srgb, var(--screen) 72%, transparent);
+}
+.overlay h2 { margin: 0; font-size: 28px; font-weight: 400; color: var(--flag); }
+.overlay p { margin: 0; font-size: 15px; line-height: 1.6; max-width: 28ch; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.banner {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  font-size: 18px; line-height: 1.4; color: var(--flag); background: var(--ink); padding: 6px 14px;
+  text-align: center; max-width: 90%; box-sizing: border-box;
+}
+.banner small { display: block; font-size: 14px; color: var(--cream); }
+.hint { margin: 0; font-size: 15px; min-height: 3em; line-height: 1.5; }
+.hint span { color: var(--flag); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); }
+.legend div { display: flex; align-items: center; gap: 6px; }
+.legend canvas { width: 16px; height: 16px; }
+button {
+  font: inherit; font-size: 16px;
+  color: var(--ink); background: var(--flag);
+  border: 0; padding: 8px 20px; cursor: pointer;
+  box-shadow: 0 4px 0 var(--block-lo);
+}
+button:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--block-lo); }
+button:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+#continue:not([hidden]) + #start { background: var(--block); color: var(--cream); }
+.pad { display: none; gap: 10px; }
+.pad button { flex: 1; padding: 14px 0; font-size: 20px; background: var(--block); color: var(--cream); touch-action: none; user-select: none; -webkit-user-select: none; }
+.pad .jump { flex: 1.6; background: var(--ball); color: var(--ink); }
+.pad .retry { flex: 0.8; background: var(--block-lo); font-size: 16px; }
+@media (pointer: coarse) { .pad { display: flex; } }
+.bottom { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.bottom button { font-size: 13px; padding: 4px 10px; background: var(--block-lo); color: var(--cream); box-shadow: none; }
+.rank { display: flex; flex-direction: column; gap: 8px; border-top: 2px solid var(--block-lo); padding-top: 12px; }
+.rank-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rank h2 { margin: 0; font-size: 18px; font-weight: 400; }
+.rank-nav { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.rank-nav span { min-width: 8.5em; text-align: center; }
+.rank-nav button { font-size: 15px; padding: 2px 10px; background: var(--block-lo); color: var(--cream); box-shadow: none; }
+#rk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 15px; font-variant-numeric: tabular-nums; }
+#rk-list li { display: grid; grid-template-columns: 2.2em 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 4px 8px; background: var(--screen); }
+#rk-list li.me { outline: 2px solid var(--ball); outline-offset: -2px; }
+#rk-list li.gap { margin-top: 6px; }
+#rk-list li.empty { display: block; color: var(--muted); }
+#rk-list .no { color: var(--muted); }
+#rk-list .first { color: var(--flag); }
+#rk-list img { width: 20px; height: 20px; display: block; }
+#rk-list .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-note { margin: 0; font-size: 13px; color: var(--muted); }
+.rk-note:empty { display: none; }
+</style>
+</head>
+<body>
+
+<div class="console">
+  <div class="top">
+    <h1>통통 골인</h1>
+    <div class="stats">
+      <div><span>스테이지</span> <b id="stage">1/30</b></div>
+      <div><span>실패</span> <b id="deaths">0</b></div>
+      <div><span>시간</span> <b id="time">0.0</b></div>
+    </div>
+  </div>
+
+  <div class="screen">
+    <canvas id="game"></canvas>
+    <div class="banner" id="banner" hidden>STAGE CLEAR</div>
+    <div class="overlay" id="overlay">
+      <h2 id="ov-title">통통 골인</h2>
+      <p id="ov-text">계속 통통 튀는 공을 굴려서 오른쪽 벽의 뚫린 곳으로 빠져나가세요. 스테이지는 30개입니다.</p>
+      <div class="actions">
+        <button id="continue" type="button" hidden>이어하기</button>
+        <button id="start" type="button">처음부터</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint" id="hint"></p>
+  <div class="legend" id="legend"></div>
+
+  <!-- 랭킹은 claude.ai에서 열었을 때만 보임 -->
+  <section class="rank" id="rank" hidden>
+    <div class="rank-head">
+      <h2>랭킹</h2>
+      <div class="rank-nav">
+        <button id="rk-prev" type="button" aria-label="이전 스테이지">‹</button>
+        <span id="rk-label">1스테이지</span>
+        <button id="rk-next" type="button" aria-label="다음 스테이지">›</button>
+      </div>
+    </div>
+    <ol id="rk-list"></ol>
+    <p class="rk-note" id="rk-note"></p>
+  </section>
+
+  <div class="pad">
+    <button type="button" data-key="left" aria-label="왼쪽">◀</button>
+    <button type="button" data-key="right" aria-label="오른쪽">▶</button>
+    <button type="button" data-key="jump" class="jump">높이 튀기</button>
+    <button type="button" id="retry-pad" class="retry">다시</button>
+  </div>
+
+  <div class="bottom">
+    <span>← → 이동 · 스페이스(↑) 누르고 있으면 높이 튐 · R 다시</span>
+    <button id="sound" type="button">소리 켜짐</button>
+  </div>
+</div>
+
+<script>
+// ===== 기본 설정 =====
+const T = 8;                     // 타일 한 칸 크기 (픽셀)
+const COLS = 20, ROWS = 18;      // 화면 = 20 x 18 칸
+const W = COLS * T, H = ROWS * T;
+const HB = 4;                    // 공 충돌 상자 절반 크기 (8x8)
+const GRAVITY = 0.15;
+const BOUNCE_SMALL = 2.2;        // 그냥 튈 때 (약 2칸 높이)
+const BOUNCE_BIG = 3.9;          // 점프키 누르고 있을 때 (약 6칸)
+const BOUNCE_JUMP_BRICK = 5.6;   // 점프 벽돌 (약 13칸)
+
+// ===== 스테이지 지도 =====
+// #  블록           ^  가시(바닥)     v  가시(천장)
+// J  점프 벽돌       X  깨지는 벽돌    B  폭탄
+// P  출발점          .  빈칸
+// 오른쪽 끝 칸(20번째 글자)을 . 으로 비워두면 거기가 출구예요.
+// 한 줄은 꼭 20글자. 18줄보다 적게 쓰면 위쪽은 빈 방으로 채워져요.
+const LEVELS = [
+  { // 1
+    hint: '<span>→</span> 로 굴러서 오른쪽 벽의 <span>뚫린 곳</span>으로 나가세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#.P.....#....##.....',
+      '####################',
+    ],
+  },
+  { // 2
+    hint: '작은 턱은 그냥 통통 튀면서 넘어갈 수 있어요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#.P..#...##...#..#..',
+      '####################',
+    ],
+  },
+  { // 3
+    hint: '높은 벽은 <span>스페이스</span>를 누르고 있으면 높이 튀어서 넘을 수 있어요.',
+    map: [
+      '#...............#...',
+      '#..........#....#...',
+      '#......#...#....#...',
+      '#......#...#....#...',
+      '#.P....#...#....#...',
+      '####################',
+    ],
+  },
+  { // 4
+    hint: '<span>가시</span>는 닿기만 해도 실패. 크게 뛰어넘으세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#.P..^^^^...^^^^^...',
+      '####################',
+    ],
+  },
+  { // 5
+    hint: '출구가 높은 곳에 있어요. 기둥을 밟고 올라가세요. 틈에는 가시!',
+    map: [
+      '#...................',
+      '#...................',
+      '#..............#####',
+      '#..............#####',
+      '#..............#####',
+      '#..........#...#####',
+      '#..........#...#####',
+      '#..........#...#####',
+      '#......##..#...#####',
+      '#......##..#...#####',
+      '#.P....##^^#^^^#####',
+      '####################',
+    ],
+  },
+  { // 6
+    hint: '노란 <span>점프 벽돌</span>을 밟으면 아주 높이 튀어 올라요. 위에도 가시가 있어요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#..............^^...',
+      '#...........########',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#...........#......#',
+      '#.P.....J...#......#',
+      '####################',
+    ],
+  },
+  { // 7
+    hint: '가시 사이의 점프 벽돌을 정확히 밟으세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#...............####',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#.P..^^^J^^^.......#',
+      '####################',
+    ],
+  },
+  { // 8
+    hint: '점프 벽돌 두 개를 이어 밟고 꼭대기 출구로. 바닥은 전부 가시.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#...............####',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#........#J#.......#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#.P.J^^^^^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 9
+    hint: '갈색 <span>깨지는 벽돌</span>은 한 번 밟으면 부서져요. 끊어진 곳을 건너뛰며 굴러가세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#.P.................',
+      '###XXXXX..XXXX..XX##',
+      '#^^^^^^^^^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 10
+    hint: '깨지는 벽돌은 머리로 박아도 부서져요. 천장을 뚫고 올라가세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#................^..',
+      '#############XX#####',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#.P...^^...^^......#',
+      '####################',
+    ],
+  },
+  { // 11
+    hint: '깨지는 계단. 밟자마자 다음 칸으로 높이 뛰어야 해요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...............####',
+      '#..................#',
+      '#..................#',
+      '#............X.....#',
+      '#..................#',
+      '#..................#',
+      '#.......XX.........#',
+      '#..................#',
+      '#.P..^^^^^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 12
+    hint: '발밑을 부숴서 아래층으로 내려가세요. 가시밭을 다 지나간 다음에.',
+    map: [
+      '#.P................#',
+      '###XXXXXXXXXXXXXXXX#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#...................',
+      '#...................',
+      '#..^^^^^^^^^^^^.....',
+      '####################',
+    ],
+  },
+  { // 13
+    hint: '까만 <span>폭탄</span>은 닿으면 터져요. 뛰어넘으세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#.P...B...BB...BBB..',
+      '####################',
+    ],
+  },
+  { // 14
+    hint: '벽 위에 폭탄이 있어요. 위에 앉지 말고 크게 넘어가세요.',
+    map: [
+      '#.............B.....',
+      '#.......B.....#.....',
+      '#.......#.....#.....',
+      '#.P.....#.....#.....',
+      '####################',
+    ],
+  },
+  { // 15
+    hint: '천장이 폭탄이에요. 여기선 <span>스페이스를 누르지 마세요</span>.',
+    map: [
+      '####################',
+      '#BBBBBBBBBBBBBBBBBB#',
+      '#..................#',
+      '#...................',
+      '#...................',
+      '#.P.^^...^^...^^....',
+      '####################',
+    ],
+  },
+  { // 16
+    hint: '점프 벽돌로 날아오를 때 폭탄 벽에 붙지 않게 조심. 속도를 줄이세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#...........########',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#...........B......#',
+      '#.P..^^^J...B......#',
+      '####################',
+    ],
+  },
+  { // 17
+    hint: '깨지는 다리 중간중간에 폭탄이 섞여 있어요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#P..................',
+      '###XXXBXXXBBXXXBX###',
+      '#BBBBBBBBBBBBBBBBBB#',
+      '####################',
+    ],
+  },
+  { // 18
+    hint: '천장 가시 아래의 끊어진 다리. 낮게, 멈추지 말고.',
+    map: [
+      '####################',
+      '#..vvvvvvvvvvvvv...#',
+      '#...................',
+      '#...................',
+      '#.P.................',
+      '###XXX..XXX..XX#####',
+      '#^^^^^^^^^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 19
+    hint: '점프 벽돌 → 깨지는 선반 → 꼭대기. 선반에선 바로 높이 뛰세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#...............####',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#.......XXXX.......#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#.P.J..^^^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 20
+    hint: '계단 끝마다 폭탄, 틈에는 가시. 크게 뛰어서 건너가세요.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#..............#####',
+      '#..............#####',
+      '#..........##B.#####',
+      '#..........###.#####',
+      '#....##B...###.#####',
+      '#.P..###^^^###^#####',
+      '####################',
+    ],
+  },
+  { // 21
+    hint: '폭탄 천장 아래 끊어진 다리. 다리에 박힌 폭탄도 조심.',
+    map: [
+      '####################',
+      '#BBBBBBBBBBBBBBBBBB#',
+      '#..................#',
+      '#...................',
+      '#...................',
+      '#P..................',
+      '###XXX..XXBXX..X####',
+      '#^^^^^^^^^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 22
+    hint: '점프 벽돌로 비스듬히 날아 천장 벽돌을 깨고, 돌아와서 한 번 더.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...............^...',
+      '##########XXX#######',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#.P....J.^^^^^^^^^^#',
+      '####################',
+    ],
+  },
+  { // 23
+    hint: '폭탄밭 사이 징검다리. 정확히 돌 위에만.',
+    map: [
+      '#...................',
+      '#...................',
+      '#P.BBBB##BBB##BBBB..',
+      '####################',
+    ],
+  },
+  { // 24
+    hint: '한 칸짜리 깨지는 계단을 쉬지 말고 올라가세요. 막히면 <span>R</span>로 다시.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#................###',
+      '#..................#',
+      '#.............X....#',
+      '#..................#',
+      '#..........X.......#',
+      '#..................#',
+      '#.......X..........#',
+      '#..................#',
+      '#....X.............#',
+      '#.P.BBBBBBBBBBBBBBB#',
+      '####################',
+    ],
+  },
+  { // 25
+    hint: '좁은 폭탄 굴뚝. 똑바로 올라간 뒤 꼭대기에서만 오른쪽으로.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#......B......######',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......B......B....#',
+      '#......#......#....#',
+      '#......#......#....#',
+      '#......#......#....#',
+      '#......#P.J...#....#',
+      '####################',
+    ],
+  },
+  { // 26
+    hint: '바닥을 깨고 두 층 아래로 내려가세요. 맨 아래는 오른쪽 끝만 안전해요.',
+    map: [
+      '#.P................#',
+      '##XX################',
+      '#..................#',
+      '#..................#',
+      '#....B...B...B.....#',
+      '################XX##',
+      '#..................#',
+      '#..................#',
+      '#...................',
+      '#...................',
+      '#....^^^^^^^^^^.....',
+      '####################',
+    ],
+  },
+  { // 27
+    hint: '끊어진 다리 끝의 점프 벽돌까지 쉬지 말고.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#...............####',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#P.................#',
+      '##XX..XX..J........#',
+      '#BBBBBBBBBBBBBBBBBB#',
+      '####################',
+    ],
+  },
+  { // 28
+    hint: '매달린 폭탄 아래에선 낮게, 폭탄 벽은 높게. 넘자마자 속도를 줄이세요.',
+    map: [
+      '####################',
+      '#..................#',
+      '#.....BB.......BB..#',
+      '#..................#',
+      '#..................#',
+      '#...........B.......',
+      '#...........B.......',
+      '#.P.........B...^...',
+      '####################',
+    ],
+  },
+  { // 29
+    hint: '점프 벽돌 두 번이면 꼭대기. 두 번째는 딱 한 칸, 아래는 전부 폭탄.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#..............#####',
+      '#..................#',
+      '#..................#',
+      '#..........J.......#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#P.J.BBBBBBBBBBBBBB#',
+      '####################',
+    ],
+  },
+  { // 30
+    hint: '마지막! 끊어진 다리 → 점프 벽돌 → 가시 달린 깨지는 선반 위 → 출구.',
+    map: [
+      '#...................',
+      '#...................',
+      '#...................',
+      '#...............####',
+      '#..................#',
+      '#..................#',
+      '#.........XXX......#',
+      '#.........vvv......#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#..................#',
+      '#P.................#',
+      '##XX..XXJ..........#',
+      '#BBBBBBBBBBBBBBBBBB#',
+      '####################',
+    ],
+  },
+];
+
+// ===== 캔버스 준비 =====
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+cv.width = W; cv.height = H;
+ctx.imageSmoothingEnabled = false;
+
+const css = getComputedStyle(document.documentElement);
+const C = {};
+for (const k of ['screen', 'block', 'block-hi', 'block-lo', 'ball', 'flag', 'crack', 'bomb', 'spark', 'cream', 'muted', 'ink']) C[k] = css.getPropertyValue('--' + k).trim();
+
+// 글자 그림 → 작은 캔버스 (도트 스프라이트)
+function makeSprite(art, colors) {
+  const s = document.createElement('canvas');
+  s.width = art[0].length; s.height = art.length;
+  const g = s.getContext('2d');
+  art.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (colors[ch]) { g.fillStyle = colors[ch]; g.fillRect(x, y, 1, 1); }
+  }));
+  return s;
+}
+
+const SPIKE_ART = [
+  '........',
+  '........',
+  '.W...W..',
+  '.S...S..',
+  'SSS.SSS.',
+  'SSS.SSS.',
+  'SSSSSSSS',
+  'LLLLLLLL',
+];
+const SPIKE_COLORS = { W: C.cream, S: '#c9c2b4', L: C['block-lo'] };
+
+const BALL_ART = [
+  '..OOOO..',
+  '.OWWOOO.',
+  'OWWOOOOO',
+  'OWOOOOOO',
+  'OOOOOOOS',
+  'OOOOOOSS',
+  '.OOOOSS.',
+  '..SSSS..',
+];
+
+const SPR = {
+  ball: makeSprite(BALL_ART, { O: C.ball, W: C.cream, S: '#c0532a' }),
+  // 잔상용 공: 보통은 공 색, 점프 벽돌로 날 때는 노란색
+  ghost: makeSprite(BALL_ART, { O: C.ball, W: C.ball, S: C.ball }),
+  ghostJump: makeSprite(BALL_ART, { O: C.flag, W: C.cream, S: C.flag }),
+  // 윗면에 풀이 있는 블록 / 없는 블록
+  blockTop: makeSprite([
+    'HHHHHHHH',
+    'HHHHHHHH',
+    'BHBBBHBL',
+    'BBBBBBBL',
+    'BBBBLBBL',
+    'BBBBBBBL',
+    'BLBBBBBL',
+    'LLLLLLLL',
+  ], { H: C['block-hi'], B: C.block, L: C['block-lo'] }),
+  block: makeSprite([
+    'BBBBBBBL',
+    'BBBBBBBL',
+    'BBLBBBBL',
+    'BBBBBBBL',
+    'BBBBBLBL',
+    'BBBBBBBL',
+    'BLBBBBBL',
+    'LLLLLLLL',
+  ], { B: C.block, L: C['block-lo'] }),
+  spike: makeSprite(SPIKE_ART, SPIKE_COLORS),
+  spikeDown: makeSprite([...SPIKE_ART].reverse(), SPIKE_COLORS),   // 위아래 뒤집은 가시
+  // 점프 벽돌: 노란 벽돌에 위쪽 화살표
+  jump: makeSprite([
+    'HHHHHHHH',
+    'YYYDDYYO',
+    'YYDDDDYO',
+    'YDDDDDDO',
+    'YYYDDYYO',
+    'YYYDDYYO',
+    'YYYYYYYO',
+    'OOOOOOOO',
+  ], { H: C.cream, Y: C.flag, D: '#c99a2e', O: '#8a6418' }),
+  // 깨지는 벽돌: 금 간 갈색 벽돌
+  crack: makeSprite([
+    'HHHLHHHL',
+    'TTTLTDTL',
+    'TTTLDTTL',
+    'LLLLLLLL',
+    'TLTTTTLT',
+    'TLDTTTLT',
+    'TLTDTTLT',
+    'LLLLLLLL',
+  ], { H: '#dcbb86', T: C.crack, L: '#6e4f2e', D: '#3d2a17' }),
+  // 폭탄 (불꽃은 따로 깜빡이게 그림)
+  bomb: makeSprite([
+    '........',
+    '.....F..',
+    '..KKKF..',
+    '.KWKKKK.',
+    'KWKKKKKK',
+    'KRRRRRRK',
+    '.KKKKKK.',
+    '..KKKK..',
+  ], { K: C.bomb, W: C.muted, F: C.cream, R: C.spark }),
+};
+
+const stars = Array.from({ length: 26 }, () => ({
+  x: Math.floor(Math.random() * W), y: Math.floor(Math.random() * H), phase: Math.floor(Math.random() * 120),
+}));
+
+// 화면 아래 블록 설명
+[[SPR.spike, '가시'], [SPR.bomb, '폭탄'], [SPR.crack, '깨지는 벽돌'], [SPR.jump, '점프 벽돌']].forEach(([spr, label]) => {
+  const item = document.createElement('div');
+  const c = document.createElement('canvas');
+  c.width = c.height = 8;
+  c.getContext('2d').drawImage(spr, 0, 0);
+  item.append(c, label);
+  document.getElementById('legend').append(item);
+});
+
+// ===== 게임 상태 =====
+let mode = 'ready';              // ready(대기) | play | dead | clear | done
+let lv = 0, map, spawn, ball, trail = [], particles = [];
+let trailMax = 6, trailJump = false;   // 잔상 길이 (세게 튈수록 길어짐), 점프 벽돌로 튄 잔상인지
+let deaths = 0, frames = 0, tick = 0, squash = 0, shake = 0, jumpT = 0, modeTimer = 0;
+let fromStart = true;            // 1스테이지부터 시작했을 때만 최고 기록을 남김
+let stageFrames = 0;             // 이번 스테이지에 들어온 뒤 지난 시간 (R로 다시 하면 0부터)
+// 랭킹 상태
+let rankSel = 0;                 // 랭킹에서 보고 있는 스테이지 (LEVELS.length = 전체)
+let rankRows = [], myBest = {}, myId = null, rankDb = null, rankUser = null;
+let rankLoading = true, rankNote = '', rankToken = 0, writing = Promise.resolve();
+const keys = { left: false, right: false, jump: false };
+const $ = id => document.getElementById(id);
+
+// 어디까지 갔는지 저장 (이어하기용)
+function savedStage() {
+  try { return Math.min(Number(localStorage.getItem('tongtong-stage')) || 0, LEVELS.length - 1); } catch (e) { return 0; }
+}
+function saveStage(i) {
+  try { if (i === null) localStorage.removeItem('tongtong-stage'); else localStorage.setItem('tongtong-stage', String(i)); } catch (e) {}
+}
+function refreshContinue() {
+  const s = savedStage();
+  $('continue').hidden = s <= 0;
+  $('continue').textContent = `${s + 1}스테이지부터`;
+}
+
+// 지도 글자를 2차원 배열로 (부족한 위쪽 줄은 빈 방으로 채움)
+function resetMap() {
+  const rows = LEVELS[lv].map;
+  const full = [];
+  for (let i = 0; i < ROWS - rows.length; i++) full.push(i === 0 ? '####################' : '#..................#');
+  full.push(...rows);
+  full.forEach((row, r) => { if (row.length !== COLS) console.warn(`스테이지 ${lv + 1}, ${r}번째 줄이 ${row.length}글자예요 (20글자여야 함)`); });
+  map = full.map(row => [...row.padEnd(COLS, '#')]);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (map[r][c] === 'P') { spawn = { x: c * T + T / 2, y: r * T + T / 2 }; map[r][c] = '.'; }
+  }
+}
+
+function loadLevel(i) {
+  lv = i;
+  resetMap();
+  $('hint').innerHTML = `<span>${i + 1}.</span> ` + LEVELS[i].hint;
+  if (mode !== 'ready' && i > savedStage()) saveStage(i);
+  stageFrames = 0;
+  respawn();
+  showStats();
+  rankSel = i;
+  renderRank();
+}
+
+function respawn() {
+  ball = { x: spawn.x, y: spawn.y, vx: 0, vy: 0 };
+  trail = [];
+  trailMax = 6; trailJump = false;
+}
+
+// 스테이지 처음 상태로 (부서진 벽돌, 터진 폭탄도 복구)
+function retry() {
+  if (mode !== 'play') return;
+  resetMap();
+  respawn();
+  stageFrames = 0;
+}
+
+function showStats() {
+  $('stage').textContent = `${lv + 1}/${LEVELS.length}`;
+  $('deaths').textContent = deaths;
+  $('time').textContent = (frames / 60).toFixed(1);
+}
+
+function tileAt(c, r) {
+  if (r < 0 || r >= ROWS || c < 0) return '#';
+  if (c >= COLS) return '.';                 // 화면 오른쪽 바깥은 비어 있음 (출구로 나갈 수 있게)
+  return map[r][c];
+}
+const isSolid = ch => ch === '#' || ch === 'J' || ch === 'X' || ch === 'B';
+
+// 공 상자(x0~x1, y0~y1)와 겹치는 타일들
+function tilesIn(x0, y0, x1, y1) {
+  const out = [];
+  for (let r = Math.floor(y0 / T); r <= Math.floor((y1 - 0.01) / T); r++)
+    for (let c = Math.floor(x0 / T); c <= Math.floor((x1 - 0.01) / T); c++)
+      out.push({ r, c, ch: tileAt(c, r) });
+  return out;
+}
+const solidHits = (x, y) => tilesIn(x - HB, y - HB, x + HB, y + HB).filter(t => isSolid(t.ch));
+
+// ===== 소리 =====
+let audio = null, soundOn = true;
+function beep(freq, dur = 0.06, slideTo = null, vol = 0.05) {
+  if (!audio || !soundOn) return;
+  const t = audio.currentTime;
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audio.destination);
+  o.start(t); o.stop(t + dur);
+}
+
+function burst(x, y, n, color, power = 1) {
+  for (let i = 0; i < n; i++) {
+    particles.push({ x, y, vx: (Math.random() - 0.5) * 2.4 * power, vy: -Math.random() * 2 * power, life: 20 + Math.random() * 14, color });
+  }
+}
+
+// ===== 게임 흐름 =====
+function start(from = 0) {
+  if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  deaths = 0; frames = 0;
+  fromStart = from === 0;
+  mode = 'play';
+  loadLevel(from);
+  $('overlay').hidden = true;
+  $('banner').hidden = true;
+}
+
+function die() {
+  mode = 'dead'; modeTimer = 45;
+  deaths++; showStats();
+  burst(ball.x, ball.y, 16, C.ball, 1.3);
+  shake = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 10;
+  beep(400, 0.35, 70);
+}
+
+// 폭탄 터짐
+function explode(t) {
+  map[t.r][t.c] = '.';
+  const x = t.c * T + 4, y = t.r * T + 4;
+  burst(x, y, 20, C.spark, 1.8);
+  burst(x, y, 14, C.flag, 1.4);
+  beep(90, 0.5, 40, 0.08);
+  die();
+  shake = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 18;
+}
+
+// 깨지는 벽돌 부수기
+function breakBricks(list) {
+  let broke = false;
+  for (const h of list) {
+    if (h.ch !== 'X' || map[h.r][h.c] !== 'X') continue;
+    map[h.r][h.c] = '.';
+    burst(h.c * T + 4, h.r * T + 4, 8, C.crack, 0.9);
+    broke = true;
+  }
+  if (broke) beep(140, 0.09, 60, 0.06);
+}
+
+// 오른쪽 출구로 빠져나감
+function exitStage() {
+  mode = 'clear'; modeTimer = 50;
+  burst(W - 2, ball.y, 18, C.flag, 1.2);
+  [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.1), i * 90));
+  const improved = recordTime('v2s' + (lv + 1), stageFrames);
+  $('banner').textContent = lv + 1 < LEVELS.length ? `STAGE ${lv + 1} CLEAR` : 'ALL CLEAR';
+  const sub = document.createElement('small');
+  sub.textContent = fmtTime(stageFrames) + (improved ? ' · 기록 갱신!' : '');
+  $('banner').append(sub);
+  $('banner').hidden = false;
+}
+
+function finish() {
+  mode = 'done';
+  $('banner').hidden = true;
+  saveStage(null);
+  refreshContinue();
+  resetMap();
+  respawn();
+  const sec = (frames / 60).toFixed(1);
+  let line = `${sec}초 · 실패 ${deaths}번`;
+  if (fromStart) {
+    recordTime('v2all', frames);
+    rankSel = LEVELS.length;
+    renderRank();
+    let best = null;
+    try { best = Number(localStorage.getItem('tongtong-best2')) || null; } catch (e) {}
+    if (best === null || frames / 60 < best) {
+      try { localStorage.setItem('tongtong-best2', sec); } catch (e) {}
+      line += ' · 최고 기록!';
+    } else line += ` · 최고 ${best}초`;
+  }
+  $('ov-title').textContent = '30스테이지 클리어!';
+  $('ov-text').textContent = line;
+  $('overlay').hidden = false;
+  $('start').focus();
+}
+
+// ===== 한 프레임 계산 =====
+function update() {
+  tick++;
+  if (squash > 0) squash--;
+  if (shake > 0) shake--;
+  if (jumpT > 0) jumpT--;
+  for (const q of particles) { q.vy += 0.1; q.x += q.vx; q.y += q.vy; q.life--; }
+  particles = particles.filter(q => q.life > 0);
+
+  if (mode === 'play' || mode === 'dead') { frames++; stageFrames++; }
+  if (mode === 'play' && tick % 6 === 0) showStats();
+
+  if (mode === 'dead') {
+    if (--modeTimer <= 0) { resetMap(); respawn(); mode = 'play'; }
+    return;
+  }
+  if (mode === 'clear') {
+    if (--modeTimer <= 0) {
+      if (lv + 1 < LEVELS.length) { mode = 'play'; loadLevel(lv + 1); $('banner').hidden = true; }
+      else finish();
+    }
+    return;
+  }
+
+  // 대기 화면/끝 화면에서는 입력 없이 제자리에서 통통 튀기만 함
+  const canMove = mode === 'play';
+  const dir = canMove ? (keys.right ? 1 : 0) - (keys.left ? 1 : 0) : 0;
+  const jumpHeld = canMove && keys.jump;
+  const b = ball;
+
+  // 좌우
+  if (dir) b.vx = Math.max(-1.4, Math.min(1.4, b.vx + dir * 0.12));
+  else b.vx *= 0.88;
+  b.x += b.vx;
+  let hits = solidHits(b.x, b.y);
+  if (hits.length) {
+    const bomb = hits.find(h => h.ch === 'B');
+    if (bomb) { explode(bomb); return; }
+    if (b.vx > 0) b.x = Math.min(...hits.map(h => h.c * T)) - HB;
+    else b.x = Math.max(...hits.map(h => (h.c + 1) * T)) + HB;
+    b.vx = 0;
+  }
+
+  // 위아래
+  trail.unshift({ x: b.x, y: b.y });
+  trail.length = Math.min(trail.length, trailMax);
+  b.vy = Math.min(b.vy + GRAVITY, 5);
+  b.y += b.vy;
+  hits = solidHits(b.x, b.y);
+  if (hits.length) {
+    const bomb = hits.find(h => h.ch === 'B');
+    if (bomb) { explode(bomb); return; }
+    if (b.vy > 0) {
+      // 땅에 닿음 → 자동으로 다시 튀어오름 (세게 튈수록 잔상이 길어짐)
+      b.y = Math.min(...hits.map(h => h.r * T)) - HB;
+      squash = 4;
+      if (hits.some(h => h.ch === 'J')) {
+        b.vy = -BOUNCE_JUMP_BRICK; jumpT = 8;
+        trailMax = 16; trailJump = true;
+        beep(250, 0.25, 1000);
+        burst(b.x, b.y + HB, 6, C.flag, 0.8);
+      } else if (jumpHeld) {
+        b.vy = -BOUNCE_BIG;
+        trailMax = 12; trailJump = false;
+        beep(520, 0.07);
+        burst(b.x, b.y + HB, 4, C['block-hi'], 0.6);
+      } else {
+        b.vy = -BOUNCE_SMALL;
+        trailMax = 8; trailJump = false;
+        if (canMove) beep(260, 0.03, null, 0.025);
+      }
+      breakBricks(hits);
+    } else {
+      // 천장에 머리 박음 (깨지는 벽돌이면 부서짐)
+      b.y = Math.max(...hits.map(h => (h.r + 1) * T)) + HB;
+      b.vy = 0;
+      beep(150, 0.04);
+      breakBricks(hits);
+    }
+  }
+
+  if (!canMove) return;
+
+  // 화면 오른쪽 밖으로 완전히 나가면 다음 스테이지
+  if (b.x - HB > W) { exitStage(); return; }
+
+  // 가시 확인 (상자를 조금 작게 잡아서 스치는 건 봐줌)
+  for (const t of tilesIn(b.x - HB + 2, b.y - HB, b.x + HB - 2, b.y + HB)) {
+    if (t.ch === '^' && b.y + HB > t.r * T + 3) { die(); return; }
+    if (t.ch === 'v' && b.y - HB < t.r * T + 5) { die(); return; }
+  }
+}
+
+// ===== 그리기 =====
+function draw() {
+  ctx.save();
+  if (shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 4), Math.round((Math.random() - 0.5) * 4));
+
+  ctx.fillStyle = C.screen;
+  ctx.fillRect(-4, -4, W + 8, H + 8);
+
+  ctx.fillStyle = C.muted;
+  for (const s of stars) if (Math.floor((tick + s.phase) / 30) % 4 !== 0) ctx.fillRect(s.x, s.y, 1, 1);
+
+  // 타일
+  const sparkOn = Math.floor(tick / 6) % 2;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const ch = map[r][c], x = c * T, y = r * T;
+    if (ch === '#') ctx.drawImage(isSolid(tileAt(c, r - 1)) ? SPR.block : SPR.blockTop, x, y);
+    else if (ch === '^') ctx.drawImage(SPR.spike, x, y);
+    else if (ch === 'v') ctx.drawImage(SPR.spikeDown, x, y);
+    else if (ch === 'X') ctx.drawImage(SPR.crack, x, y);
+    else if (ch === 'J') ctx.drawImage(SPR.jump, x, y + (jumpT > 0 ? 1 : 0));   // 밟은 직후엔 살짝 눌림
+    else if (ch === 'B') {
+      ctx.drawImage(SPR.bomb, x, y);
+      ctx.fillStyle = sparkOn ? C.spark : C.flag;                              // 깜빡이는 심지 불꽃
+      ctx.fillRect(x + 6, y, 1, 1);
+    }
+  }
+  drawExit();
+
+  // 공 잔상 + 공 (잔상은 지나온 자리에 공 모양이 점점 흐려지며 남음)
+  if (mode !== 'dead' && mode !== 'clear') {
+    const ghost = trailJump ? SPR.ghostJump : SPR.ghost;
+    for (let i = trail.length - 1; i >= 1; i -= 2) {
+      const t = trail[i];
+      ctx.globalAlpha = 0.5 * (1 - i / (trail.length + 1));
+      ctx.drawImage(ghost, Math.round(t.x - HB), Math.round(t.y - HB));
+    }
+    ctx.globalAlpha = 1;
+    const w = squash > 0 ? 10 : 8, h = squash > 0 ? 6 : 8;
+    ctx.drawImage(SPR.ball, Math.round(ball.x - w / 2), Math.round(ball.y + HB - h), w, h);
+  }
+
+  for (const q of particles) {
+    ctx.fillStyle = q.color;
+    ctx.fillRect(Math.round(q.x), Math.round(q.y), 1, 1);
+  }
+  ctx.restore();
+}
+
+// 출구(오른쪽 벽의 빈칸)에 깜빡이는 > 화살표
+function drawExit() {
+  if (Math.floor(tick / 20) % 2) return;
+  ctx.fillStyle = C.flag;
+  const x = (COLS - 1) * T + 2;
+  for (let r = 0; r < ROWS; r++) {
+    if (map[r][COLS - 1] !== '.') continue;
+    const y = r * T + 1;
+    [[0, 0], [1, 1], [2, 2], [3, 3], [2, 4], [1, 5], [0, 6]].forEach(([dx, dy]) => ctx.fillRect(x + dx, y + dy, 1, 1));
+  }
+}
+
+// ===== 루프 (항상 초당 60번 계산) =====
+let last = performance.now(), acc = 0;
+function loop(now) {
+  acc += Math.min(now - last, 100);
+  last = now;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  draw();
+  requestAnimationFrame(loop);
+}
+loadLevel(0);
+refreshContinue();
+requestAnimationFrame(loop);
+
+// ===== 입력 =====
+const KEYMAP = {
+  ArrowLeft: 'left', a: 'left', A: 'left',
+  ArrowRight: 'right', d: 'right', D: 'right',
+  ' ': 'jump', ArrowUp: 'jump', w: 'jump', W: 'jump', z: 'jump', Z: 'jump',
+};
+addEventListener('keydown', e => {
+  const k = KEYMAP[e.key];
+  if (k) { keys[k] = true; e.preventDefault(); }
+  if (e.key === 'r' || e.key === 'R') retry();
+  if ((e.key === ' ' || e.key === 'Enter') && (mode === 'ready' || mode === 'done') && document.activeElement?.tagName !== 'BUTTON') start(savedStage());
+});
+addEventListener('keyup', e => {
+  const k = KEYMAP[e.key];
+  if (k) keys[k] = false;
+});
+addEventListener('blur', () => { keys.left = keys.right = keys.jump = false; });
+
+// 휴대폰용 화면 버튼
+document.querySelectorAll('.pad button[data-key]').forEach(btn => {
+  const k = btn.dataset.key;
+  const on = e => { keys[k] = true; e.preventDefault(); };
+  const off = () => { keys[k] = false; };
+  btn.addEventListener('pointerdown', on);
+  btn.addEventListener('pointerup', off);
+  btn.addEventListener('pointerleave', off);
+  btn.addEventListener('pointercancel', off);
+  btn.addEventListener('contextmenu', e => e.preventDefault());
+});
+$('retry-pad').addEventListener('click', retry);
+
+$('start').addEventListener('click', () => start(0));
+$('continue').addEventListener('click', () => start(savedStage()));
+$('sound').addEventListener('click', () => {
+  soundOn = !soundOn;
+  $('sound').textContent = soundOn ? '소리 켜짐' : '소리 꺼짐';
+});
+
+// ===== 랭킹 =====
+// 기록은 times/<내 id> 문서 하나에 { v2s1: 프레임수, v2s2: ..., v2all: 전체 } 로 저장
+// (1초 = 60프레임). 각자 자기 문서만 쓸 수 있고, 모두가 읽을 수 있어요.
+// v2 = 어려워진 지도의 기록. 예전 쉬운 지도의 기록(s1, all …)은 문서에 남아 있지만 랭킹엔 안 나와요.
+const fmtTime = f => (f / 60).toFixed(2) + '초';
+
+// 내 최고 기록보다 빠르면 저장하고 true
+function recordTime(key, f) {
+  if (Number.isFinite(myBest[key]) && myBest[key] <= f) return false;
+  myBest = { ...myBest, [key]: f };
+  renderRank();
+  if (rankDb && myId) {
+    const body = { ...myBest };
+    writing = writing
+      .then(() => rankDb.doc('times/' + myId).set(body))
+      .catch(e => {
+        rankNote = e?.code === 'invalid_argument'
+          ? '이 화면에서는 기록을 올릴 수 없어요 (보기 전용 권한).'
+          : '기록을 올리지 못했어요. 잠시 후 다시 깨면 올라가요.';
+        renderRank();
+      });
+  }
+  return true;
+}
+
+async function renderRank() {
+  const all = rankSel === LEVELS.length;
+  const key = all ? 'v2all' : 'v2s' + (rankSel + 1);
+  $('rk-label').textContent = all ? '30스테이지 전체' : `${rankSel + 1}스테이지`;
+
+  // 사람별 기록 모으기 (내 기록은 아직 저장 중이어도 바로 보이게)
+  const times = new Map();
+  for (const r of rankRows) if (Number.isFinite(r.data[key])) times.set(r.id, r.data[key]);
+  if (myId && Number.isFinite(myBest[key]) && !(times.get(myId) <= myBest[key])) times.set(myId, myBest[key]);
+  const sorted = [...times].map(([id, f]) => ({ id, f })).sort((a, b) => a.f - b.f);
+  const shown = sorted.slice(0, 10).map((x, i) => ({ ...x, rank: i + 1 }));
+  const meIdx = sorted.findIndex(x => x.id === myId);
+  if (meIdx >= 10) shown.push({ ...sorted[meIdx], rank: meIdx + 1, gap: true });
+
+  const token = ++rankToken;
+  const ps = rankUser && shown.length ? await rankUser.profiles(shown.map(x => x.id)) : {};
+  if (token !== rankToken) return;   // 그사이 다른 화면으로 바뀜
+
+  const list = $('rk-list');
+  list.replaceChildren();
+  if (!shown.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = rankLoading && rankDb ? '불러오는 중…' : '아직 기록이 없어요. 이 스테이지를 깨면 첫 기록이 됩니다.';
+    list.append(li);
+  }
+  for (const x of shown) {
+    const li = document.createElement('li');
+    if (x.id === myId) li.classList.add('me');
+    if (x.gap) li.classList.add('gap');
+    const no = document.createElement('span');
+    no.className = x.rank === 1 ? 'no first' : 'no';
+    no.textContent = x.rank + '위';
+    const img = document.createElement('img');
+    img.alt = '';
+    if (ps[x.id]) img.src = ps[x.id].avatarUrl;
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = (ps[x.id]?.name || '이름 없음') + (x.id === myId ? ' (나)' : '');
+    const tm = document.createElement('span');
+    tm.textContent = fmtTime(x.f);
+    li.append(no, img, nm, tm);
+    list.append(li);
+  }
+  $('rk-note').textContent = rankNote;
+}
+
+$('rk-prev').addEventListener('click', () => { rankSel = (rankSel + LEVELS.length) % (LEVELS.length + 1); renderRank(); });
+$('rk-next').addEventListener('click', () => { rankSel = (rankSel + 1) % (LEVELS.length + 1); renderRank(); });
+
+(async () => {
+  const cl = window.claude;
+  const [db, user] = cl?.use ? await Promise.all([cl.use('db'), cl.use('user')]) : [null, null];
+  if (!db || !user) {
+    // claude.ai 밖(GitHub Pages 등)에서는 랭킹 칸을 숨긴 채로 둠
+    rankLoading = false;
+    return;
+  }
+  $('rank').hidden = false;
+  rankUser = user;
+  myId = await user.id();
+  rankDb = db;
+  if (!myId) rankNote = '로그인한 사람만 기록이 올라가요.';
+
+  const timer = setTimeout(() => {
+    if (rankLoading) { rankNote = '랭킹을 아직 불러오지 못했어요. 연결을 확인해 주세요.'; renderRank(); }
+  }, 10000);
+  db.collection('times').onSnapshot(snap => {
+    rankRows = snap.docs.filter(d => d.exists).map(d => ({ id: d.id, data: d.data() }));
+    // 서버에 있는 내 기록과 이번에 세운 기록 중 빠른 쪽을 내 최고 기록으로
+    const mine = rankRows.find(r => r.id === myId)?.data || {};
+    const merged = { ...myBest };
+    for (const [k, v] of Object.entries(mine)) if (Number.isFinite(v) && !(merged[k] <= v)) merged[k] = v;
+    myBest = merged;
+    if (!snap.metadata.fromCache) {
+      clearTimeout(timer);
+      rankLoading = false;
+      if (rankNote.startsWith('랭킹을 아직')) rankNote = '';
+    }
+    renderRank();
+  }, () => {
+    clearTimeout(timer);
+    rankLoading = false;
+    rankNote = '랭킹을 불러오지 못했어요.';
+    renderRank();
+  });
+})();
+</script>
+</body>
+</html>
